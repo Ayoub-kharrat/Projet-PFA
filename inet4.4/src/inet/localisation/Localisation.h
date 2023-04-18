@@ -6,11 +6,11 @@
 #include <string>
 #include <tuple>
 
-#include "../../applications/base/ApplicationBase.h"
-#include "../../common/geometry/common/Coord.h"
-#include "../../common/InitStageRegistry.h"
-#include "../../networklayer/common/L3Address.h"
-#include "../../transportlayer/contract/udp/UdpSocket.h"
+#include "../applications/base/ApplicationBase.h"
+#include "../common/geometry/common/Coord.h"
+#include "../common/InitStageRegistry.h"
+#include "../networklayer/common/L3Address.h"
+#include "../transportlayer/contract/udp/UdpSocket.h"
 
 namespace inet
 {
