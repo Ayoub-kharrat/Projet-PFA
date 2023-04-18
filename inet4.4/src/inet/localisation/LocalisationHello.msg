@@ -27,13 +27,7 @@ class LocalisationHello extends FieldsChunk
     int hopdistance; 
     string type;
 }
-class XedMsg extends FieldsChunk
-{
-    Ipv4Address srcAddress; //terminal que gerou o pacote
-    unsigned int sequencenumber;//sequence number created by the source node(node's ID = srcIPAddress) of the hello msg and associated with that node
-    Ipv4Address dstAddress; //terminal que re-/transmite o pacote
-    double random;
-}
+
 class AnchorData extends FieldsChunk
 {
     Ipv4Address srcAddress; //terminal que gerou o pacote
