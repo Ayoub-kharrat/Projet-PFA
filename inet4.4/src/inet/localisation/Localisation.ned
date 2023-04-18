@@ -66,21 +66,6 @@ module LocalisationNode extends AdhocHost
 }
 
 
-//module IdealClock extends AdhocHost
-//{
-   // parameters:
-
-//@class(IdealClock);
-       //  @signal[src](type="wirelessSignal");
-
-     //submodules:
-
-       // source: AdhocHost {
-        //    @display("p=311,158");
-       // }
-   // gates:
-  ///      input in;
-     //  output out;
 
 
 
