@@ -1,0 +1,5 @@
+<scenario>
+
+        
+        <create-module t="50ms" type="inet.node.localisation.LocalisationNode" parent="." submodule="newTarget" vector="true" />
+</scenario>

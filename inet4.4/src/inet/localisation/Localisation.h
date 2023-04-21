@@ -6,14 +6,20 @@
 #include <string>
 #include <tuple>
 
-#include "../applications/base/ApplicationBase.h"
-#include "../common/geometry/common/Coord.h"
-#include "../common/InitStageRegistry.h"
-#include "../networklayer/common/L3Address.h"
-#include "../transportlayer/contract/udp/UdpSocket.h"
+#include "../../applications/base/ApplicationBase.h"
+#include "../../common/geometry/common/Coord.h"
+#include "../../common/InitStageRegistry.h"
+#include "../../networklayer/common/L3Address.h"
+#include "../../transportlayer/contract/udp/UdpSocket.h"
 
 namespace inet
 {
+struct PosData {
+    int rank;
+    double rssi;
+    double x;
+    double y;
+};
   class Localisation : public ApplicationBase, public UdpSocket::ICallback
   {
   protected:
@@ -21,7 +27,8 @@ namespace inet
     cOvalFigure *point1,*point2,*point3,*point4,*point5,*point6,*point;
     bool filled = true;
     // state
-    int numBroadcasts;
+    int rank;
+    std::string type;
     Coord pos;
     UdpSocket socket;
     cMessage *selfMsg = nullptr;
@@ -31,7 +38,7 @@ namespace inet
     cPar *broadcastDelay = nullptr;
     IInterfaceTable *ift = nullptr;
     NetworkInterface *interface80211ptr = nullptr;
-    std::map<std::tuple<double, double>, double> dictOfAnchorData;
+    std::map<L3Address, std::list<PosData>> dictOfAnchorData;
     int interfaceId = -1;
   protected:
     virtual int numInitStages() const override { return NUM_INIT_STAGES; }
@@ -44,14 +51,14 @@ namespace inet
     virtual void handleCrashOperation(LifecycleOperation *operation) override { stop(); }
     void start();
     void stop();
-    void broadcastHello();
-    void sendAnchorDataToStation(L3Address stationAddress,cMessage *msg);
-    void sendWhereAreYou(L3Address destAddress);
+    void findMe();
+    void sendAnchorDataToStation(L3Address stationAddress,L3Address targetAddress,cMessage *msg);
+    void sendPostion(L3Address destAddress);
     double calculateDistance(double rssi,double rssiRef,double n);
     struct Point;
     int findCircleCircleIntersection(Point p1, double r1, Point p2, double r2, Point &i1, Point &i2);
 
-    void calculatePosition(std::map<std::tuple<double, double>, double>dictOfAnchorData);
+    void calculatePosition(std::map<L3Address, std::list<PosData>> dictOfAnchorData);
     Coord getMyPosition();
     bool nodeIs(std::string type);
     double calculateRssi(cMessage *msg);

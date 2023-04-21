@@ -13,35 +13,35 @@
 #include <omnetpp/regmacros.h>
 #include <omnetpp/simtime.h>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <iostream>
 #include <iterator>
 #include <vector>
 
-#include "../common/InitStages.h"
-#include "../common/IntrusivePtr.h"
-#include "../common/IProtocolRegistrationListener.h"
-#include "../common/lifecycle/OperationalMixin.h"
-#include "../common/lifecycle/OperationalMixinImpl.h"
-#include "../common/ModuleAccess.h"
-#include "../common/packet/chunk/Chunk.h"
-#include "../common/packet/chunk/FieldsChunk.h"
-#include "../common/packet/Message.h"
-#include "../common/packet/Packet.h"
-#include "../common/Protocol.h"
-#include "../common/ProtocolTag_m.h"
-#include "../common/Ptr.h"
-#include "../common/Simsignals.h"
-#include "../common/Units.h"
-#include "../linklayer/common/InterfaceTag_m.h"
-#include "../mobility/contract/IMobility.h"
-#include "../networklayer/common/L3AddressResolver.h"
-#include "../networklayer/common/L3AddressTag_m.h"
-#include "../networklayer/common/NetworkInterface.h"
-#include "../networklayer/contract/ipv4/Ipv4Address.h"
-#include "../networklayer/contract/IInterfaceTable.h"
-#include "../networklayer/ipv4/Ipv4InterfaceData.h"
-#include "../physicallayer/wireless/common/contract/packetlevel/SignalTag_m.h"
+#include "../../common/InitStages.h"
+#include "../../common/IntrusivePtr.h"
+#include "../../common/IProtocolRegistrationListener.h"
+#include "../../common/lifecycle/OperationalMixin.h"
+#include "../../common/lifecycle/OperationalMixinImpl.h"
+#include "../../common/ModuleAccess.h"
+#include "../../common/packet/chunk/FieldsChunk.h"
+#include "../../common/packet/Message.h"
+#include "../../common/packet/Packet.h"
+#include "../../common/Protocol.h"
+#include "../../common/ProtocolTag_m.h"
+#include "../../common/Ptr.h"
+#include "../../common/Simsignals.h"
+#include "../../common/Units.h"
+#include "../../linklayer/common/InterfaceTag_m.h"
+#include "../../mobility/contract/IMobility.h"
+#include "../../networklayer/common/L3AddressResolver.h"
+#include "../../networklayer/common/L3AddressTag_m.h"
+#include "../../networklayer/common/NetworkInterface.h"
+#include "../../networklayer/contract/ipv4/Ipv4Address.h"
+#include "../../networklayer/contract/IInterfaceTable.h"
+#include "../../networklayer/ipv4/Ipv4InterfaceData.h"
+#include "../../physicallayer/wireless/common/contract/packetlevel/SignalTag_m.h"
 #include "LocalisationHello_m.h"
 
 namespace inet {
@@ -51,40 +51,41 @@ Localisation::Localisation() {
 Localisation::~Localisation() {
     cancelAndDelete(selfMsg);
 }
+
 void Localisation::initialize(int stage) {
     ApplicationBase::initialize(stage);
     if (stage == INITSTAGE_LOCAL) {
         ift = getModuleFromPar<IInterfaceTable>(par("interfaceTableModule"),
                 this);
         event = new cMessage("event");
-        numBroadcasts = 0;
+        type=getParentModule()->par("type").stdstringValue();
         helloInterval = par("helloInterval");
         broadcastDelay = &par("broadcastDelay");
+        if ( nodeIs("anchor")) {
+            rank = 0;
+            pos=getMyPosition();
+            std::cout << "Initialized pos   :   " << pos<< endl;
+        }
+
     } else if (stage == INITSTAGE_ROUTING_PROTOCOLS) {
         registerProtocol(Protocol::manet, gate("socketOut"), gate("socketIn"));
     }
 }
 
 void Localisation::handleSelfMessage(cMessage *msg) {
-    if (msg == event && nodeIs("station")) {
-
-        if (numBroadcasts < 1) {
-            sendWhereAreYou(getAdressOf("target"));
-            numBroadcasts++;
-        }
-
-    }
-    if (msg->getKind() == 1) {  // Check if this is a flash message
-        filled = !filled;  // Toggle the fill color state
-        if (filled) {
-            point->setFillColor(cFigure::RED);  // Set the fill color to red
-        } else {
-            point->setFillColor(cFigure::WHITE); // Set the fill color to transparent
-        }
-
-        scheduleAt(simTime() + helloInterval, msg); // Schedule the next flash message
+    if (msg == event && nodeIs("target")) {
+            findMe();
     }
 
+
+}
+
+bool comparePosData(const PosData& a, const PosData& b) {
+    if (a.rank != b.rank) {
+        return a.rank < b.rank;
+    } else {
+        return a.rssi > b.rssi;
+    }
 }
 
 void Localisation::handleMessageWhenUp(cMessage *msg) {
@@ -92,25 +93,29 @@ void Localisation::handleMessageWhenUp(cMessage *msg) {
     if (msg->isSelfMessage()) {
         handleSelfMessage(msg);
     } else if (nodeIs("target")) {
-        getParentModule()->bubble("recieved WhereRu");
-        if (numBroadcasts < 1) {
-            broadcastHello();
-            numBroadcasts++;
-        }
+        getParentModule()->bubble("recieved posInfo");
+        auto recHello =  staticPtrCast<CalculatedPos>(check_and_cast<Packet*>(msg)->peekData<CalculatedPos>()->dupShared());
+        pos=Coord(recHello->getX(),recHello->getY());
+        rank = recHello->getRank();
+        type="anchor";
     } else if (nodeIs("anchor")) {
         getParentModule()->bubble("recieved Broadcast");
-        if (numBroadcasts < 1) {
-            sendAnchorDataToStation(getAdressOf("station"), msg);
+        auto recHello =  staticPtrCast<WhereIam>(check_and_cast<Packet*>(msg)->peekData<WhereIam>()->dupShared());
+
+        L3Address srcAddress = recHello->getSrcAddress();
+
+
+
+            sendAnchorDataToStation(getAdressOf("station"),srcAddress, msg);
             numBroadcasts++;
-        }
+
 
     } else if (nodeIs("station")) {
-        if (check_and_cast<Packet*>(msg)->getTag<PacketProtocolTag>()->getProtocol()
-                == &Protocol::manet) {
             try {
 
                 auto recHello =  staticPtrCast<AnchorData>(check_and_cast<Packet*>(msg)->peekData<AnchorData>()->dupShared());
-
+                int rank = recHello->getRank();
+                L3Address targetAddress =recHello->getTargetAddress();
                 double x = recHello->getX();
                 double y = recHello->getY();
                 double rssi = recHello->getRssi();
@@ -118,25 +123,13 @@ void Localisation::handleMessageWhenUp(cMessage *msg) {
                         "rssiRef");
                 double n = getParentModule()->getParentModule()->par("n");
 
-                dictOfAnchorData[std::make_tuple(x, y)] = calculateDistance(
-                        rssi, rssiRef, n);
-                if (dictOfAnchorData.size() == 3) {
-//                    std::string result = "";
-//                    for (const auto &entry : dictOfAnchorData) {
-//                        std::tuple<double, double> key = entry.first;
-//                        double value = entry.second;
-//                        result += "(" + std::to_string(std::get<0>(key)) + ","
-//                                + std::to_string(std::get<1>(key)) + "): "
-//                                + std::to_string(value) + "\n";
-//                    }
-//                    std::cout << result << endl;
-                    calculatePosition(dictOfAnchorData);
-                }
+                dictOfAnchorData[targetAddress].emplace_back(rank, rssi, x, y);
+                dictOfAnchorData[targetAddress].sort(comparePosData);
+
+
 
             } catch (const std::exception &e) {
             }
-        }
-
     }
 
 }
@@ -151,8 +144,8 @@ Coord Localisation::getMyPosition() {
     pos = mod->getCurrentPosition();
     return pos;
 }
-bool Localisation::nodeIs(std::string type) {
-    return getParentModule()->par("type").stdstringValue() == type;
+bool Localisation::nodeIs(std::string Type) {
+    return type == Type;
 }
 double Localisation::calculateDistance(double rssi, double rssiRef, double n) {
     return pow(10, (rssiRef - rssi) / (10 * n));
@@ -219,7 +212,7 @@ void Localisation::calculatePosition(std::map<std::tuple<double, double>, double
      Point i3, i4;
      int numIntersections2 = findCircleCircleIntersection(p1, r1, p3, r3, i3, i4);
      Point i5, i6;
-     int numIntersections3 = findCircleCircleIntersection(p2, r2, p3, r3, i5, i6);
+     int numIntersectfindMeions3 = findCircleCircleIntersection(p2, r2, p3, r3, i5, i6);
 
      if(numIntersections1==2)
      {
@@ -350,15 +343,17 @@ double Localisation::calculateRssi(cMessage *msg) {
     double signalPowerdBm = 10 * log10(rxPower / 1e-3);
     return signalPowerdBm;
 }
-void Localisation::sendWhereAreYou(L3Address destAddress) {
-    auto whereru = makeShared<LocalisationHello>();
+void Localisation::sendPostion(L3Address destAddress,int rank,double x,double y) {
+    auto posInfo = makeShared<CalculatedPos>();
     Ipv4Address source =
             (interface80211ptr->getProtocolData<Ipv4InterfaceData>()->getIPAddress());
-    whereru->setChunkLength(b(128));
-    whereru->setSrcAddress(source);
-    whereru->setType("WHERERU");
+    posInfo->setChunkLength(b(128));
+    posInfo->setSrcAddress(source);
+    posInfo->setRank(rank);
+    posInfo->setX(x);
+    posInfo->setY(y);
 
-    auto packet = new Packet("Whereru", whereru);
+    auto packet = new Packet("posInfo", posInfo);
     packet->addTagIfAbsent<L3AddressReq>()->setDestAddress(destAddress);
     packet->addTagIfAbsent<L3AddressReq>()->setSrcAddress(source);
     packet->addTagIfAbsent<InterfaceReq>()->setInterfaceId(
@@ -367,22 +362,22 @@ void Localisation::sendWhereAreYou(L3Address destAddress) {
     packet->addTagIfAbsent<DispatchProtocolReq>()->setProtocol(&Protocol::ipv4);
     send(packet, "socketOut");
     packet = nullptr;
-    whereru = nullptr;
+    posInfo = nullptr;
     scheduleAt(simTime() + helloInterval, event);
-    getParentModule()->bubble("Sending where are you");
+    getParentModule()->bubble("Sending posInfo");
 
 }
-void Localisation::sendAnchorDataToStation(L3Address stationAddress,cMessage *msg) {
+void Localisation::sendAnchorDataToStation(L3Address stationAddress,L3Address targetAddress,cMessage *msg) {
     auto data = makeShared<AnchorData>();
     Ipv4Address source =
             (interface80211ptr->getProtocolData<Ipv4InterfaceData>()->getIPAddress());
     data->setChunkLength(b(128));
-    data->setSrcAddress(source);
-    data->setType("ANCHORDATA");
-    data->setX(getMyPosition().x);
-    data->setY(getMyPosition().y);
+    data->setRank(rank);
+    data->setTargetAddress(targetAddress);
+    data->setX(pos.x);
+    data->setY(pos.y);
     data->setRssi(calculateRssi(msg));
-//    std::cout << getFullPath() << "   :   " << calculateRssi(msg) << endl;
+    std::cout << getFullPath() << "   :   " << calculateRssi(msg) << endl;
     auto packet = new Packet("Data", data);
     packet->addTagIfAbsent<L3AddressReq>()->setDestAddress(stationAddress);
     packet->addTagIfAbsent<L3AddressReq>()->setSrcAddress(source);
@@ -398,13 +393,12 @@ void Localisation::sendAnchorDataToStation(L3Address stationAddress,cMessage *ms
     getParentModule()->bubble("Sending anchor data");
 
 }
-void Localisation::broadcastHello() {
-    auto hello = makeShared<LocalisationHello>();
+void Localisation::findMe() {
+    auto hello = makeShared<whereIam>();
     Ipv4Address source =
             (interface80211ptr->getProtocolData<Ipv4InterfaceData>()->getIPAddress());
     hello->setChunkLength(b(128));
     hello->setSrcAddress(source);
-    hello->setType("HELLO");
     auto packet = new Packet("Hello", hello);
     packet->addTagIfAbsent<L3AddressReq>()->setDestAddress(
             Ipv4Address(255, 255, 255, 255));

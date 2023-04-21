@@ -9,7 +9,7 @@ package inet.localisation;
 
 
 import inet.applications.contract.IApp;
-import inet.node.inet.AdhocHost;
+import inet.node.aodv.AodvRouter;
 import inet.node.wireless.AccessPoint;
 
 
@@ -52,10 +52,13 @@ module ap extends AccessPoint
         p.out --> p.in;
 }
 
-module LocalisationNode extends AdhocHost
+module LocalisationNode extends AodvRouter
 {
     parameters:
-        string type = default("anchor");
+        string type=default("target");
+        double n=default(0.3);
+        double rssiRef=default(-60);
+        
     submodules:
         loc: Localisation {
             @display("p=898.684,223.542");
