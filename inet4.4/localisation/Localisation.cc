@@ -89,7 +89,7 @@ void Localisation::handleMessageWhenUp(cMessage *msg) {
 
     if (msg->isSelfMessage()) {
         handleSelfMessage(msg);
-    } else if (nodeIs("target") || (nodeIs("target")&& rank>0)) {
+    } else if (nodeIs("target") || (nodeIs("anchor")&& rank>0)) {
         getParentModule()->bubble("recieved posInfo");
         try{
 
