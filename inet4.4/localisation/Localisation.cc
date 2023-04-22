@@ -89,7 +89,7 @@ void Localisation::handleMessageWhenUp(cMessage *msg) {
 
     if (msg->isSelfMessage()) {
         handleSelfMessage(msg);
-    } else if (nodeIs("target")) {
+    } else if (nodeIs("target") || (nodeIs("target")&& rank>0)) {
         getParentModule()->bubble("recieved posInfo");
         try{
 
@@ -103,7 +103,6 @@ void Localisation::handleMessageWhenUp(cMessage *msg) {
         auto recHello =  staticPtrCast<WhereIam>(check_and_cast<Packet*>(msg)->peekData<WhereIam>()->dupShared());
 
         L3Address srcAddress = recHello->getSrcAddress();
-        std::cout  <<" pos  :   " << srcAddress<< endl;
 
 
             sendAnchorDataToStation(getAdressOf("station"),srcAddress, msg);
@@ -126,10 +125,9 @@ void Localisation::handleMessageWhenUp(cMessage *msg) {
                 PosData newPosData = {rank, rssi, x, y};
                 dictOfAnchorData[targetAddress].emplace_back(newPosData);
                 dictOfAnchorData[targetAddress].sort(comparePosData);
-                std::cout << lastAddress <<" pos  :   " << targetAddress<< endl;
-                if(lastAddress != nullptr  && lastAddress != &targetAddress){
+                if(dictOfAnchorData[targetAddress].size()>2){
                     int maxRank = -1;
-                    auto it = dictOfAnchorData[*lastAddress].begin();
+                    auto it = dictOfAnchorData[targetAddress].begin();
                     for (int i = 0; i < 3 ; i++, it++) {
                         const auto& posData = *it;
                         bestData[std::make_tuple(posData.x, posData.y)]=calculateDistance(
@@ -137,10 +135,11 @@ void Localisation::handleMessageWhenUp(cMessage *msg) {
                         maxRank = std::max(maxRank, posData.rank);
                     }
                     Coord position=calculatePosition(bestData);
-                    std::cout << lastAddress <<" pos  :   " << position.x <<"-"<< position.y << endl;
-                    sendPostion(*lastAddress, maxRank+1,position.x,position.y);
+                    std::cout << targetAddress <<" pos  :   " << position.x <<","<< position.y << " rank : "<< rank<< endl;
+                    sendPostion(targetAddress, maxRank+1,position.x,position.y);
                     bestData.clear();
                 }
+//*lastAddress=targetAddress;
 
 
 
@@ -338,7 +337,7 @@ void Localisation::sendAnchorDataToStation(L3Address stationAddress,L3Address ta
     data->setX(pos.x);
     data->setY(pos.y);
     data->setRssi(calculateRssi(msg));
-    //std::cout << getFullPath() << "   :   " << calculateRssi(msg) << endl;
+    std::cout << getFullPath() << "   :   " << calculateRssi(msg) << endl;
     auto packet = new Packet("Data", data);
     packet->addTagIfAbsent<L3AddressReq>()->setDestAddress(stationAddress);
     packet->addTagIfAbsent<L3AddressReq>()->setSrcAddress(source);
@@ -382,6 +381,7 @@ void Localisation::start() {
                 pos=getMyPosition();
 
             }
+
     for (int i = 0; i < ift->getNumInterfaces(); i++) {
         auto ie = ift->getInterface(i);
         auto name = ie->getInterfaceName();
@@ -390,6 +390,9 @@ void Localisation::start() {
             break;
         }
     }
+    Ipv4Address source =
+                (interface80211ptr->getProtocolData<Ipv4InterfaceData>()->getIPAddress());
+    std::cout << " Myaddresss  :   " << source << endl;
     scheduleAt(simTime() + uniform(0.0, par("maxVariance").doubleValue()),
             event);
 }
