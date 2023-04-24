@@ -12,6 +12,7 @@
 #include <omnetpp/csimulation.h>
 #include <omnetpp/regmacros.h>
 #include <omnetpp/simtime.h>
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <iostream>
@@ -51,92 +52,142 @@ Localisation::Localisation() {
 Localisation::~Localisation() {
     cancelAndDelete(selfMsg);
 }
+
 void Localisation::initialize(int stage) {
+
     ApplicationBase::initialize(stage);
     if (stage == INITSTAGE_LOCAL) {
-        ift = getModuleFromPar<IInterfaceTable>(par("interfaceTableModule"),
-                this);
+        ift = getModuleFromPar<IInterfaceTable>(par("interfaceTableModule"),this);
         event = new cMessage("event");
-        numBroadcasts = 0;
+        type=getParentModule()->par("type").stdstringValue();
         helloInterval = par("helloInterval");
         broadcastDelay = &par("broadcastDelay");
+
+
     } else if (stage == INITSTAGE_ROUTING_PROTOCOLS) {
         registerProtocol(Protocol::manet, gate("socketOut"), gate("socketIn"));
     }
 }
 
 void Localisation::handleSelfMessage(cMessage *msg) {
-    if (msg == event && nodeIs("station")) {
 
-        if (numBroadcasts < 1) {
-            sendWhereAreYou(getAdressOf("target"));
-            numBroadcasts++;
-        }
-
-    }
-    if (msg->getKind() == 1) {  // Check if this is a flash message
-        filled = !filled;  // Toggle the fill color state
-        if (filled) {
-            point->setFillColor(cFigure::RED);  // Set the fill color to red
-        } else {
-            point->setFillColor(cFigure::WHITE); // Set the fill color to transparent
-        }
-
-        scheduleAt(simTime() + helloInterval, msg); // Schedule the next flash message
+    if (msg == event && nodeIs("target")) {
+            findMe();
     }
 
+
+}
+
+bool comparePosData(const PosData& a, const PosData& b) {
+    if (a.rank != b.rank) {
+        return a.rank < b.rank;
+    } else {
+        return a.rssi > b.rssi;
+    }
 }
 
 void Localisation::handleMessageWhenUp(cMessage *msg) {
 
     if (msg->isSelfMessage()) {
         handleSelfMessage(msg);
-    } else if (nodeIs("target")) {
-        getParentModule()->bubble("recieved WhereRu");
-        if (numBroadcasts < 1) {
-            broadcastHello();
-            numBroadcasts++;
-        }
-    } else if (nodeIs("anchor")) {
-        getParentModule()->bubble("recieved Broadcast");
-        if (numBroadcasts < 1) {
-            sendAnchorDataToStation(getAdressOf("station"), msg);
-            numBroadcasts++;
-        }
+    }
+  else
+    {
+          if (nodeIs("target") || (nodeIs("anchor")&& rank>0))
+                  {
 
-    } else if (nodeIs("station")) {
-        if (check_and_cast<Packet*>(msg)->getTag<PacketProtocolTag>()->getProtocol()
-                == &Protocol::manet) {
-            try {
-
-                auto recHello =  staticPtrCast<AnchorData>(check_and_cast<Packet*>(msg)->peekData<AnchorData>()->dupShared());
-
-                double x = recHello->getX();
-                double y = recHello->getY();
-                double rssi = recHello->getRssi();
-                double rssiRef = getParentModule()->getParentModule()->par(
-                        "rssiRef");
-                double n = getParentModule()->getParentModule()->par("n");
-
-                dictOfAnchorData[std::make_tuple(x, y)] = calculateDistance(
-                        rssi, rssiRef, n);
-                if (dictOfAnchorData.size() == 3) {
-//                    std::string result = "";
-//                    for (const auto &entry : dictOfAnchorData) {
-//                        std::tuple<double, double> key = entry.first;
-//                        double value = entry.second;
-//                        result += "(" + std::to_string(std::get<0>(key)) + ","
-//                                + std::to_string(std::get<1>(key)) + "): "
-//                                + std::to_string(value) + "\n";
-//                    }
-//                    std::cout << result << endl;
-                    calculatePosition(dictOfAnchorData);
+                    try
+                    {
+                        std::cout  <<" target  :   " <<  endl;
+                        auto recHello =  staticPtrCast<CalculatedPos>(check_and_cast<Packet*>(msg)->peekData<CalculatedPos>()->dupShared());
+                        getParentModule()->bubble("recieved posInfo");
+                        pos=Coord(recHello->getX(),recHello->getY());
+                        rank = recHello->getRank();
+                        type="anchor";
+                    }
+                    catch (const std::exception &e) {}
                 }
+          if (nodeIs("anchor"))
+                 {
+                    try
+                     {
+                    auto recHello =  staticPtrCast<WhereIam>(check_and_cast<Packet*>(msg)->peekData<WhereIam>()->dupShared());
+                    getParentModule()->bubble("recieved Broadcast");
 
-            } catch (const std::exception &e) {
-            }
-        }
+                    L3Address srcAddress = recHello->getSrcAddress();
+                    std::cout  <<" pos  :   " << srcAddress<< endl;
 
+
+                    sendAnchorDataToStation(getAdressOf("station"),srcAddress, msg);
+                     }
+
+                      catch (const std::exception &e) {}
+
+
+                }
+          if (nodeIs("station"))
+                 {
+                        try {
+
+                            auto recHello =  staticPtrCast<AnchorData>(check_and_cast<Packet*>(msg)->peekData<AnchorData>()->dupShared());
+                            getParentModule()->bubble("recieved Data");
+
+                            int rank = recHello->getRank();
+                            L3Address targetAddress =recHello->getTargetAddress();
+
+                            double x = recHello->getX();
+                            double y = recHello->getY();
+                            double rssi = recHello->getRssi();
+                            double rssiRef = getParentModule()->getParentModule()->par(
+                                    "rssiRef");
+                            double n = getParentModule()->getParentModule()->par("n");
+                            std::cout  <<" station  :   x:" << x <<" y: "<< y <<" rssi: "<< rssi <<" rank: "<< rank <<" "<< endl;
+                            PosData newPosData = {rank, rssi, x, y};
+                            dictOfAnchorData[targetAddress].emplace_back(newPosData);
+                            dictOfAnchorData[targetAddress].sort(comparePosData);
+
+
+
+
+                            if (dictOfAnchorData[targetAddress].size() >= 3) {
+                                int maxRank = -1;
+                                auto it = dictOfAnchorData[targetAddress].begin();
+
+                                for (int i = 0; i < 3 ; i++, it++) {
+                                    const auto& posData = *it;
+                                    bestData[std::make_tuple(posData.x, posData.y)]=calculateDistance(
+                                            posData.rssi, rssiRef, n);
+                                    maxRank = std::max(maxRank, posData.rank);
+                                }
+
+
+                               /* std::cout << "*********************************bestData***************************************" << std::endl;
+                                std::string result2 = "";
+                                for (const auto &entry : bestData) {
+                                    std::tuple<double, double> key = entry.first;
+                                    double value = entry.second;
+                                    result2 += "(" + std::to_string(std::get<0>(key)) + ","
+                                            + std::to_string(std::get<1>(key)) + "): "
+                                            + std::to_string(value) + "\n";
+                                }
+                                std::cout << result2 << endl;
+                                std::cout << "************************************************************************" << std::endl;
+*/
+
+
+                                Coord position=calculatePosition(bestData);bestData.clear();
+                                std::cout << targetAddress <<" pos  :   " << position.x <<"-"<< position.y << endl;
+                                sendPostion(targetAddress, maxRank+1,position.x,position.y);
+
+
+
+                            }
+
+
+
+                        } catch (const std::exception &e) {
+                        }
+                  }
     }
 
 }
@@ -151,8 +202,8 @@ Coord Localisation::getMyPosition() {
     pos = mod->getCurrentPosition();
     return pos;
 }
-bool Localisation::nodeIs(std::string type) {
-    return getParentModule()->par("type").stdstringValue() == type;
+bool Localisation::nodeIs(std::string Type) {
+    return type == Type;
 }
 double Localisation::calculateDistance(double rssi, double rssiRef, double n) {
     return pow(10, (rssiRef - rssi) / (10 * n));
@@ -191,7 +242,7 @@ int Localisation::findCircleCircleIntersection(Point p1, double r1, Point p2, do
         return 2;
     }
 }
-void Localisation::calculatePosition(std::map<std::tuple<double, double>, double> dictOfAnchorData) {
+Coord Localisation::calculatePosition(std::map<std::tuple<double, double>, double> dictOfAnchorData) {
 
     std::vector<Localisation::Point> inter ;
     auto it = dictOfAnchorData.begin();
@@ -275,71 +326,65 @@ int i=0;
      xg=xg/i;
 
 
-
-    std::cout << "Estimating position of the target : (" << xg
-            << "," << yg << ")" << endl;
-    std::cout << "distance : (" << r1
-                << "," << r2 << "," << r3 <<  ")" << endl;
-    point1 = new cOvalFigure("point1");
-    point1->setBounds(cFigure::Rectangle(0, 0, r1*2, r1*2));
-    point1->setFilled(false);
-    point1->setFillColor(cFigure::RED);
-    point1->setPosition(cFigure::Point(x1, y1),
-            cFigure::ANCHOR_CENTER);
-    cCanvas *d = getParentModule()->getParentModule()->getCanvas();
-    d->addFigure(point1);
-
-    point2 = new cOvalFigure("point2");
-    point2->setBounds(cFigure::Rectangle(0, 0, r2*2, r2*2));
-    point2->setFilled(false);
-    point2->setFillColor(cFigure::RED);
-    point2->setPosition(cFigure::Point(x2, y2),
-            cFigure::ANCHOR_CENTER);
-    d->addFigure(point2);
-
-    point3 = new cOvalFigure("point3");
-    point3->setBounds(cFigure::Rectangle(0, 0, r3*2, r3*2));
-    point3->setFilled(false);
-    point3->setFillColor(cFigure::RED);
-    point3->setPosition(cFigure::Point(x3, y3),
-           cFigure::ANCHOR_CENTER);
-    d->addFigure(point3);
-
-    point4 = new cOvalFigure("point4");
-       point4->setBounds(cFigure::Rectangle(0, 0, 1, 1));
-       point4->setFilled(true);
-       point4->setFillColor(cFigure::BLUE);
-       point4->setPosition(cFigure::Point(inter[0].x,inter[0].y),
-              cFigure::ANCHOR_CENTER);
-       d->addFigure(point4);
-
-       point5 = new cOvalFigure("point5");
-          point5->setBounds(cFigure::Rectangle(0, 0, 1, 1));
-          point5->setFilled(true);
-          point5->setFillColor(cFigure::RED);
-          point5->setPosition(cFigure::Point(inter[1].x,inter[1].y),
+/*
+     point1 = new cOvalFigure("point1");
+         point1->setBounds(cFigure::Rectangle(0, 0, r1*2, r1*2));
+         point1->setFilled(false);
+         point1->setFillColor(cFigure::RED);
+         point1->setPosition(cFigure::Point(x1, y1),
                  cFigure::ANCHOR_CENTER);
-          d->addFigure(point5);
+         cCanvas *d = getParentModule()->getParentModule()->getCanvas();
+         d->addFigure(point1);
 
-          point6 = new cOvalFigure("point6");
-             point6->setBounds(cFigure::Rectangle(-1, -1, 1, 1));
-             point6->setFilled(true);
-             point6->setFillColor(cFigure::RED);
-             point6->setPosition(cFigure::Point(inter[2].x,inter[2].y),
-                    cFigure::ANCHOR_CENTER);
-             d->addFigure(point6);
-    point = new cOvalFigure("point");
-    point->setBounds(cFigure::Rectangle(-1, -1, 1, 1));
-    point->setFilled(true);
-    point->setFillColor(cFigure::RED);
-    point->setPosition(cFigure::Point(xg, yg),
-            cFigure::ANCHOR_CENTER);
-    d->addFigure(point);
-    cMessage *flashMsg = new cMessage("flash");
-    flashMsg->setKind(1); // Set the message kind to 1 to identify it as a flash message
+         point2 = new cOvalFigure("point2");
+         point2->setBounds(cFigure::Rectangle(0, 0, r2*2, r2*2));
+         point2->setFilled(false);
+         point2->setFillColor(cFigure::RED);
+         point2->setPosition(cFigure::Point(x2, y2),
+                 cFigure::ANCHOR_CENTER);
+         d->addFigure(point2);
 
-    // Schedule the message to toggle the fill color of the circle every second  // Flash interval in seconds
-    scheduleAt(simTime() + helloInterval, flashMsg);
+         point3 = new cOvalFigure("point3");
+         point3->setBounds(cFigure::Rectangle(0, 0, r3*2, r3*2));
+         point3->setFilled(false);
+         point3->setFillColor(cFigure::RED);
+         point3->setPosition(cFigure::Point(x3, y3),
+                cFigure::ANCHOR_CENTER);
+         d->addFigure(point3);
+
+         point4 = new cOvalFigure("point4");
+            point4->setBounds(cFigure::Rectangle(0, 0, 1, 1));
+            point4->setFilled(true);
+            point4->setFillColor(cFigure::BLUE);
+            point4->setPosition(cFigure::Point(inter[0].x,inter[0].y),
+                   cFigure::ANCHOR_CENTER);
+            d->addFigure(point4);
+
+            point5 = new cOvalFigure("point5");
+               point5->setBounds(cFigure::Rectangle(0, 0, 1, 1));
+               point5->setFilled(true);
+               point5->setFillColor(cFigure::RED);
+               point5->setPosition(cFigure::Point(inter[1].x,inter[1].y),
+                      cFigure::ANCHOR_CENTER);
+               d->addFigure(point5);
+
+               point6 = new cOvalFigure("point6");
+                  point6->setBounds(cFigure::Rectangle(-1, -1, 1, 1));
+                  point6->setFilled(true);
+                  point6->setFillColor(cFigure::RED);
+                  point6->setPosition(cFigure::Point(inter[2].x,inter[2].y),
+                         cFigure::ANCHOR_CENTER);
+                  d->addFigure(point6);*/
+     cCanvas *d = getParentModule()->getParentModule()->getCanvas();
+
+         point = new cOvalFigure("point");
+         point->setBounds(cFigure::Rectangle(-1, -1, 1, 1));
+         point->setFilled(true);
+         point->setFillColor(cFigure::RED);
+         point->setPosition(cFigure::Point(xg, yg),
+                 cFigure::ANCHOR_CENTER);
+         d->addFigure(point);
+    return Coord(xg,yg);
 
 }
 
@@ -350,15 +395,17 @@ double Localisation::calculateRssi(cMessage *msg) {
     double signalPowerdBm = 10 * log10(rxPower / 1e-3);
     return signalPowerdBm;
 }
-void Localisation::sendWhereAreYou(L3Address destAddress) {
-    auto whereru = makeShared<LocalisationHello>();
+void Localisation::sendPostion(L3Address destAddress,int rank,double x,double y) {
+    auto posInfo = makeShared<CalculatedPos>();
     Ipv4Address source =
             (interface80211ptr->getProtocolData<Ipv4InterfaceData>()->getIPAddress());
-    whereru->setChunkLength(b(128));
-    whereru->setSrcAddress(source);
-    whereru->setType("WHERERU");
+    posInfo->setChunkLength(b(128));
+    posInfo->setSrcAddress(source);
+    posInfo->setRank(rank);
+    posInfo->setX(x);
+    posInfo->setY(y);
 
-    auto packet = new Packet("Whereru", whereru);
+    auto packet = new Packet("posInfo", posInfo);
     packet->addTagIfAbsent<L3AddressReq>()->setDestAddress(destAddress);
     packet->addTagIfAbsent<L3AddressReq>()->setSrcAddress(source);
     packet->addTagIfAbsent<InterfaceReq>()->setInterfaceId(
@@ -367,22 +414,22 @@ void Localisation::sendWhereAreYou(L3Address destAddress) {
     packet->addTagIfAbsent<DispatchProtocolReq>()->setProtocol(&Protocol::ipv4);
     send(packet, "socketOut");
     packet = nullptr;
-    whereru = nullptr;
+    posInfo = nullptr;
     scheduleAt(simTime() + helloInterval, event);
-    getParentModule()->bubble("Sending where are you");
+    getParentModule()->bubble("Sending posInfo");
 
 }
-void Localisation::sendAnchorDataToStation(L3Address stationAddress,cMessage *msg) {
+void Localisation::sendAnchorDataToStation(L3Address stationAddress,L3Address targetAddress,cMessage *msg) {
     auto data = makeShared<AnchorData>();
     Ipv4Address source =
             (interface80211ptr->getProtocolData<Ipv4InterfaceData>()->getIPAddress());
     data->setChunkLength(b(128));
-    data->setSrcAddress(source);
-    data->setType("ANCHORDATA");
-    data->setX(getMyPosition().x);
-    data->setY(getMyPosition().y);
+    data->setRank(rank);
+    data->setTargetAddress(targetAddress);
+    data->setX(pos.x);
+    data->setY(pos.y);
     data->setRssi(calculateRssi(msg));
-//    std::cout << getFullPath() << "   :   " << calculateRssi(msg) << endl;
+    std::cout << getFullPath() << "   :   " << calculateRssi(msg) << endl;
     auto packet = new Packet("Data", data);
     packet->addTagIfAbsent<L3AddressReq>()->setDestAddress(stationAddress);
     packet->addTagIfAbsent<L3AddressReq>()->setSrcAddress(source);
@@ -390,21 +437,28 @@ void Localisation::sendAnchorDataToStation(L3Address stationAddress,cMessage *ms
             interface80211ptr->getInterfaceId());
     packet->addTagIfAbsent<PacketProtocolTag>()->setProtocol(&Protocol::manet);
     packet->addTagIfAbsent<DispatchProtocolReq>()->setProtocol(&Protocol::ipv4);
+
+
+
+
     send(packet, "socketOut");
+
     packet = nullptr;
     data = nullptr;
+
     cancelEvent(event);
     scheduleAt(simTime() + helloInterval, event);
     getParentModule()->bubble("Sending anchor data");
 
+
 }
-void Localisation::broadcastHello() {
-    auto hello = makeShared<LocalisationHello>();
+
+void Localisation::findMe() {
+    auto hello = makeShared<WhereIam>();
     Ipv4Address source =
             (interface80211ptr->getProtocolData<Ipv4InterfaceData>()->getIPAddress());
     hello->setChunkLength(b(128));
     hello->setSrcAddress(source);
-    hello->setType("HELLO");
     auto packet = new Packet("Hello", hello);
     packet->addTagIfAbsent<L3AddressReq>()->setDestAddress(
             Ipv4Address(255, 255, 255, 255));
@@ -422,9 +476,17 @@ void Localisation::broadcastHello() {
     getParentModule()->bubble("Broadcasting hello");
 }
 void Localisation::start() {
+    std::cout  <<" start  :   " <<  endl;
+
+    if ( nodeIs("anchor")) {
+                rank = 0;
+                pos=getMyPosition();
+
+            }
     for (int i = 0; i < ift->getNumInterfaces(); i++) {
         auto ie = ift->getInterface(i);
         auto name = ie->getInterfaceName();
+
         if (strstr(name, "wlan") != nullptr) {
             interface80211ptr = ie;
             break;
