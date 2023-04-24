@@ -1,0 +1,22 @@
+<scenario>
+
+        
+        <create-module t="1s" type="inet.Localisation.LocalisationNode" parent="." submodule="newTarget" vector="true" />
+        <create-module t="2s" type="inet.Localisation.LocalisationNode" parent="." submodule="newTarget" vector="true" />
+       
+       
+        <create-module t="3s" type="inet.Localisation.LocalisationNode" parent="." submodule="newTarget" vector="true" />
+                <create-module t="4s" type="inet.Localisation.LocalisationNode" parent="." submodule="newTarget" vector="true" />
+        
+                <create-module t="5s" type="inet.Localisation.LocalisationNode" parent="." submodule="newTarget" vector="true" />
+                <create-module t="6s" type="inet.Localisation.LocalisationNode" parent="." submodule="newTarget" vector="true" />
+                <create-module t="7s" type="inet.Localisation.LocalisationNode" parent="." submodule="newTarget" vector="true" />
+                <create-module t="8s" type="inet.Localisation.LocalisationNode" parent="." submodule="newTarget" vector="true" />
+                <create-module t="9s" type="inet.Localisation.LocalisationNode" parent="." submodule="newTarget" vector="true" />
+                        <create-module t="10s" type="inet.Localisation.LocalisationNode" parent="." submodule="newTarget" vector="true" />
+                                <create-module t="11s" type="inet.Localisation.LocalisationNode" parent="." submodule="newTarget" vector="true" />
+                        
+        
+	         
+        
+</scenario>
