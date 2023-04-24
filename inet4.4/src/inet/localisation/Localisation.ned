@@ -5,12 +5,11 @@
 //
 
 
-package inet.localisation;
+package inet.Localisation;
 
 
 import inet.applications.contract.IApp;
-import inet.node.inet.AdhocHost;
-import inet.node.wireless.AccessPoint;
+import inet.node.aodv.AodvRouter;
 
 
 module Localisation like IApp
@@ -22,6 +21,7 @@ module Localisation like IApp
         string interfaceTableModule = default("^.interfaceTable");
         string networkProtocolModule = default("^.ipv4.ip");
         string netmask = default("255.255.0.0");  // netmask for the ad-hoc network
+        string address = default("192.168.0.55");
         double maxVariance = default(1); // This is the maximum of a random value to determine when the first hello message will be sent out// the expiry time of the routing entries
         double helloInterval @unit(s) = default(3s);
         volatile double broadcastDelay @unit(s) = default(uniform(0s,0.01s));
@@ -30,42 +30,21 @@ module Localisation like IApp
         output socketOut;
 }
 
-module MyAccessPoint
-{
-    parameters:
-        @class(MyAccessPoint);
-    gates:
-        input in @directIn;
-        output out @directOut;
-}
 
-module ap extends AccessPoint
+
+module LocalisationNode extends AodvRouter
 {
     parameters:
-        string type = default("ap");
+        string type = default("target");
+        double n = default(0.3);
+        double rssiRef = default(-60);
+
     submodules:
-        p: MyAccessPoint {
-            @display("p=898.684,223.542");
+        localisation: Localisation {
+            @display("p=825,226");
         }
     connections:
-
-        p.out --> p.in;
+        localisation.socketOut --> at.in++;
+        localisation.socketIn <-- at.out++;
 }
-
-module LocalisationNode extends AdhocHost
-{
-    parameters:
-        string type = default("anchor");
-    submodules:
-        loc: Localisation {
-            @display("p=898.684,223.542");
-        }
-    connections:
-        loc.socketOut --> at.in++;
-        loc.socketIn <-- at.out++;
-}
-
-
-
-
 
