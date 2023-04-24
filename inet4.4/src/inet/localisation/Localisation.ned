@@ -36,8 +36,7 @@ module LocalisationNode extends AodvRouter
 {
     parameters:
         string type = default("target");
-        double n = default(0.3);
-        double rssiRef = default(-60);
+        
 
     submodules:
         localisation: Localisation {
