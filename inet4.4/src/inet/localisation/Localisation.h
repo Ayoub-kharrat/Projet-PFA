@@ -2,6 +2,7 @@
 #define __INET_Localisation_H
 
 #include <omnetpp/simtime_t.h>
+#include <list>
 #include <map>
 #include <string>
 #include <tuple>
@@ -14,6 +15,12 @@
 
 namespace inet
 {
+struct PosData {
+    int rank;
+    double rssi;
+    double x;
+    double y;
+};
   class Localisation : public ApplicationBase, public UdpSocket::ICallback
   {
   protected:
@@ -21,7 +28,8 @@ namespace inet
     cOvalFigure *point1,*point2,*point3,*point4,*point5,*point6,*point;
     bool filled = true;
     // state
-    int numBroadcasts;
+    int rank;
+    std::string type;
     Coord pos;
     UdpSocket socket;
     cMessage *selfMsg = nullptr;
@@ -30,8 +38,10 @@ namespace inet
     simtime_t helloInterval;
     cPar *broadcastDelay = nullptr;
     IInterfaceTable *ift = nullptr;
+    L3Address *lastAddress;
     NetworkInterface *interface80211ptr = nullptr;
-    std::map<std::tuple<double, double>, double> dictOfAnchorData;
+    std::map<std::tuple<double, double>, double> bestData;
+    std::map<L3Address, std::list<PosData>> dictOfAnchorData;
     int interfaceId = -1;
   protected:
     virtual int numInitStages() const override { return NUM_INIT_STAGES; }
@@ -44,14 +54,14 @@ namespace inet
     virtual void handleCrashOperation(LifecycleOperation *operation) override { stop(); }
     void start();
     void stop();
-    void broadcastHello();
-    void sendAnchorDataToStation(L3Address stationAddress,cMessage *msg);
-    void sendWhereAreYou(L3Address destAddress);
+    void findMe();
+    void sendAnchorDataToStation(L3Address stationAddress,L3Address targetAddress,cMessage *msg);
+    void sendPostion(L3Address destAddress,int rank,double x,double y);
     double calculateDistance(double rssi,double rssiRef,double n);
     struct Point;
     int findCircleCircleIntersection(Point p1, double r1, Point p2, double r2, Point &i1, Point &i2);
 
-    void calculatePosition(std::map<std::tuple<double, double>, double>dictOfAnchorData);
+    Coord calculatePosition(std::map<std::tuple<double, double>, double> dictOfAnchorData);
     Coord getMyPosition();
     bool nodeIs(std::string type);
     double calculateRssi(cMessage *msg);
