@@ -23,6 +23,14 @@ class WhereIam extends FieldsChunk
 {
     L3Address srcAddress; 
 }
+class helloAnchor extends FieldsChunk
+{
+    L3Address srcAddress; 
+}
+class helloTarget extends FieldsChunk
+{
+    L3Address srcAddress; 
+}
 class CalculatedPos extends FieldsChunk
 {
     L3Address srcAddress;
