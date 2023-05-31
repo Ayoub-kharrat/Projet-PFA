@@ -770,7 +770,7 @@ void Localisation::start() {
     }
 
 }
-void Localisation::stop() {
+void Localisation::stop()  {
     cancelEvent(event);
     socket.close();
     delayActiveOperationFinish(par("stopOperationTimeout"));
