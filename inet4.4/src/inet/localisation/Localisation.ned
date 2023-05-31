@@ -15,6 +15,7 @@ import inet.node.aodv.AodvRouter;
 module Localisation like IApp
 {
     parameters:
+    
         @class(Localisation);
         @display("i=block/network2");
         string routingTableModule = default("^.ipv4.routingTable");
